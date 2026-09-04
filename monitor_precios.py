@@ -165,7 +165,7 @@ def consultar_producto(nombre: str, url: str) -> dict:
         else:
             if precio is not None:
                 return {
-                    "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M"),
+                    "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d"),
                     "producto": nombre,
                     "url": url,
                     "precio": precio,
@@ -179,7 +179,7 @@ def consultar_producto(nombre: str, url: str) -> dict:
             time.sleep(espera)
 
     return {
-        "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M"),
+        "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d"),
         "producto": nombre,
         "url": url,
         "precio": None,
