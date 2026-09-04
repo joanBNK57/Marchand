@@ -123,12 +123,55 @@ DOMINIOS_RENDER_JS = {
 }
 
 
+def extraer_precio_texto_generico(texto: str) -> float | None:
+    """Toma el primer monto '$XX.XX' que encuentra en el texto renderizado."""
+    match = re.search(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", texto)
+    if match:
+        return float(match.group(1).replace(",", ""))
+    return None
+
+
+def extraer_precio_marchand(texto: str) -> float | None:
+    """
+    Extractor para marchand.com.mx. La página muestra, en este orden:
+    un badge "Ahorras: $X.XX", luego el precio original (tachado), y
+    luego el precio final con descuento. Para no confundir el ahorro
+    con el precio real:
+      1. Ignora cualquier monto que venga justo después de la palabra
+         "Ahorras" (a menos de ~20 caracteres antes).
+      2. De los montos restantes (precio original y precio final),
+         se queda con el más bajo, que es el precio final a pagar.
+    """
+    candidatos = []
+    for m in re.finditer(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", texto):
+        contexto_previo = texto[max(0, m.start() - 20):m.start()].lower()
+        if "ahorr" in contexto_previo:
+            continue
+        candidatos.append(float(m.group(1).replace(",", "")))
+
+    if not candidatos:
+        return None
+    return min(candidatos)
+
+
+# Mapea cada dominio "render JS" a su extractor de texto específico.
+EXTRACTORES_RENDER_JS = {
+    "marchand.com.mx": extraer_precio_marchand,
+}
+
+
 def obtener_precio_render_js(url: str) -> float | None:
     """
     Para sitios que cargan el precio con JavaScript (como marchand.com.mx).
     Abre la página en un navegador headless, espera a que cargue el
-    contenido, y busca el precio en el texto ya renderizado.
+    contenido, y usa el extractor de texto específico del dominio.
     """
+    extractor_texto = extraer_precio_texto_generico
+    for dominio, func in EXTRACTORES_RENDER_JS.items():
+        if dominio in url:
+            extractor_texto = func
+            break
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         try:
@@ -141,10 +184,7 @@ def obtener_precio_render_js(url: str) -> float | None:
         finally:
             browser.close()
 
-    match = re.search(r"\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)", texto)
-    if match:
-        return float(match.group(1).replace(",", ""))
-    return None
+    return extractor_texto(texto)
 
 
 def consultar_producto(nombre: str, url: str) -> dict:
@@ -165,7 +205,7 @@ def consultar_producto(nombre: str, url: str) -> dict:
         else:
             if precio is not None:
                 return {
-                    "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d"),
+                    "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M"),
                     "producto": nombre,
                     "url": url,
                     "precio": precio,
@@ -179,7 +219,7 @@ def consultar_producto(nombre: str, url: str) -> dict:
             time.sleep(espera)
 
     return {
-        "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d"),
+        "fecha": datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d %H:%M"),
         "producto": nombre,
         "url": url,
         "precio": None,
